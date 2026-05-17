@@ -1,0 +1,1235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capital Bikeshare — Trip Explorer</title>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.15.0/mapbox-gl.css" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Archivo+Black&family=Archivo:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.15.0/mapbox-gl.js"></script>
+<style>
+  :root {
+    --bg:      #0a0c0f;
+    --surface: #111318;
+    --surface2:#13161c;
+    --border:  #1e2229;
+    --accent:  #e8ff47;
+    --accent2: #47c8ff;
+    --red:     #ff4757;
+    --text:    #e8eaf0;
+    --muted:   #555e70;
+    --left-w:  252px;
+    --right-w: 212px;
+    --top-h:   52px;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: 'Archivo', sans-serif;
+    font-weight: 300;
+    height: 100vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ══════════════════════════════════════════
+     TOP BAR
+  ══════════════════════════════════════════ */
+  #top-bar {
+    height: var(--top-h);
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    z-index: 20;
+    gap: 0;
+    /* no overflow — title and load btn are always pinned */
+  }
+
+  /* scrollable filter zone between title and load btn */
+  #filter-scroll-wrap {
+    flex: 1;
+    min-width: 0;
+    position: relative;
+    align-self: stretch;
+    display: flex;
+    align-items: center;
+  }
+  /* fade hint on the right edge */
+  #filter-scroll-wrap::after {
+    content: '';
+    position: absolute;
+    top: 0; right: 0; bottom: 0;
+    width: 28px;
+    background: linear-gradient(to right, transparent, var(--surface));
+    pointer-events: none;
+    z-index: 2;
+  }
+  #filter-scroll {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    overflow-x: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    height: 100%;
+    width: 100%;
+  }
+  #filter-scroll::-webkit-scrollbar { height: 2px; }
+  #filter-scroll::-webkit-scrollbar-track { background: transparent; }
+  #filter-scroll::-webkit-scrollbar-thumb { background: var(--border); }
+
+  #top-title {
+    padding: 0 16px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  #top-title h1 {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    white-space: nowrap;
+    line-height: 1;
+  }
+  #top-title p {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+    white-space: nowrap;
+  }
+
+  .vdiv {
+    width: 1px;
+    height: 28px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+
+  .bar-seg {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 0 12px;
+    flex-shrink: 0;
+  }
+
+  .bar-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    white-space: nowrap;
+  }
+
+  select {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    color: var(--text);
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    padding: 3px 6px;
+    border-radius: 2px;
+    outline: none;
+    cursor: pointer;
+    height: 26px;
+    appearance: none;
+    -webkit-appearance: none;
+    padding-right: 18px;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M0 0l5 6 5-6z' fill='%235a6070'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 6px center;
+  }
+  select:focus { border-color: var(--accent); }
+
+  #f-month-start,
+  #f-month-end { width: 104px; }
+
+  .chips {
+    display: flex;
+    gap: 3px;
+    align-items: center;
+  }
+
+  .chip {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    padding: 0 7px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    border-radius: 2px;
+    border: 1px solid var(--border);
+    cursor: pointer;
+    transition: border-color .12s, color .12s, background .12s;
+    color: var(--muted);
+    user-select: none;
+    white-space: nowrap;
+  }
+  .chip.active {
+    border-color: var(--accent);
+    color: var(--accent);
+    background: rgba(232,255,71,.07);
+  }
+
+  #bar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 0 14px 0 0;
+    flex-shrink: 0;
+  }
+
+  #status {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    white-space: nowrap;
+    max-width: 200px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  #status.err { color: var(--red); }
+
+  #load-btn {
+    background: var(--accent);
+    color: var(--bg);
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    border: none;
+    padding: 0 14px;
+    height: 28px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: opacity .15s;
+    flex-shrink: 0;
+  }
+  #load-btn:hover { opacity: .85; }
+  #load-btn:disabled { opacity: .35; cursor: not-allowed; }
+
+  /* ══════════════════════════════════════════
+     MAIN AREA
+  ══════════════════════════════════════════ */
+  #main-area {
+    flex: 1;
+    display: flex;
+    overflow: hidden;
+    position: relative;
+    min-height: 0;
+  }
+
+  /* ══════════════════════════════════════════
+     LEFT PANEL — leaderboard
+  ══════════════════════════════════════════ */
+  #left-panel {
+    width: var(--left-w);
+    background: var(--surface);
+    border-right: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    z-index: 10;
+    min-height: 0;
+  }
+
+  #lb-header {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    flex-shrink: 0;
+  }
+  #lb-header span {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    white-space: nowrap;
+  }
+
+  #sort-select {
+    font-size: 10px;
+    height: 22px;
+    padding: 0 18px 0 5px;
+    flex: 1;
+    background-position: right 4px center;
+  }
+
+  #trip-list {
+    flex: 1;
+    overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: var(--border) transparent;
+    min-height: 0;
+  }
+
+  .empty-msg {
+    padding: 28px 14px;
+    text-align: center;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.7;
+  }
+
+  .trip-card {
+    padding: 8px 12px;
+    border-bottom: 1px solid var(--border);
+    cursor: pointer;
+    transition: background .1s;
+  }
+  .trip-card:hover { background: rgba(232,255,71,.04); }
+  .trip-card.active {
+    background: rgba(232,255,71,.07);
+    border-left: 2px solid var(--accent);
+    padding-left: 10px;
+  }
+
+  .tc-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 3px;
+    gap: 6px;
+  }
+  .tc-type {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: .04em;
+    color: var(--accent2);
+    line-height: 1.3;
+  }
+  .tc-metric {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--accent);
+    white-space: nowrap;
+  }
+  .tc-meta {
+    font-size: 10px;
+    color: var(--muted);
+    line-height: 1.45;
+  }
+  .tc-meta strong { color: var(--text); font-weight: 400; }
+
+  /* ══════════════════════════════════════════
+     MAP
+  ══════════════════════════════════════════ */
+  #map {
+    flex: 1;
+    height: 100%;
+    min-width: 0;
+  }
+
+  /* ══════════════════════════════════════════
+     RIGHT PANEL — stats + sparkline + layers + legend
+  ══════════════════════════════════════════ */
+  #right-panel {
+    width: var(--right-w);
+    background: var(--surface);
+    border-left: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    flex-shrink: 0;
+    z-index: 10;
+    overflow-y: auto;
+    scrollbar-width: none;
+  }
+  #right-panel::-webkit-scrollbar { display: none; }
+
+  .rp-lbl {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.09em;
+    color: var(--muted);
+    padding: 9px 12px 7px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+
+  /* stats 2×2 */
+  #stats-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+  .stat {
+    background: var(--surface);
+    padding: 11px 12px 9px;
+  }
+  .stat-val {
+    font-family: 'DM Mono', monospace;
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--accent);
+    line-height: 1;
+    letter-spacing: -0.02em;
+  }
+  .stat-lbl {
+    font-size: 9px;
+    color: var(--muted);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    margin-top: 4px;
+  }
+
+  /* sparkline */
+  #spark-wrap {
+    padding: 10px 12px 8px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  #spark-canvas { display: block; width: 100%; height: 44px; }
+  .spark-foot {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 4px;
+  }
+  .spark-foot span {
+    font-family: 'DM Mono', monospace;
+    font-size: 8px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .spark-foot .spark-title {
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+  }
+
+  /* layer toggles */
+  #layer-section {
+    padding: 8px 12px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .layer-btn {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(255,255,255,.02);
+    border: 1px solid var(--border);
+    color: var(--muted);
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    padding: 6px 10px;
+    border-radius: 2px;
+    cursor: pointer;
+    transition: border-color .12s, color .12s, background .12s;
+    width: 100%;
+    text-align: left;
+  }
+  .ldot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--border);
+    flex-shrink: 0;
+    transition: background .12s;
+  }
+  .layer-btn.active {
+    border-color: rgba(232,255,71,.3);
+    color: var(--accent);
+  }
+  .layer-btn.active .ldot { background: var(--accent); }
+
+  /* legend */
+  #legend {
+    padding: 8px 12px 14px;
+    display: flex;
+    flex-direction: column;
+    gap: 7px;
+    flex-shrink: 0;
+  }
+  .leg-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+  .leg-line {
+    width: 20px;
+    height: 2px;
+    border-radius: 1px;
+    flex-shrink: 0;
+  }
+
+  /* ══════════════════════════════════════════
+     TRIP DETAIL PANEL (floats over map)
+  ══════════════════════════════════════════ */
+  #detail-panel {
+    position: fixed;
+    bottom: 20px;
+    right: calc(var(--right-w) + 16px);
+    width: 268px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 3px;
+    padding: 14px;
+    z-index: 30;
+    display: none;
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    box-shadow: 0 8px 32px rgba(0,0,0,.6);
+  }
+  #detail-panel.visible { display: block; }
+
+  #detail-close {
+    position: absolute;
+    top: 10px;
+    right: 12px;
+    cursor: pointer;
+    color: var(--muted);
+    font-size: 13px;
+    line-height: 1;
+    transition: color .1s;
+  }
+  #detail-close:hover { color: var(--text); }
+
+  .detail-title {
+    font-family: 'Archivo Black', sans-serif;
+    font-size: 11px;
+    color: var(--accent);
+    margin-bottom: 10px;
+    padding-right: 16px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .detail-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    border-bottom: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .detail-row:last-child { border: none; }
+  .detail-row span:last-child { color: var(--text); text-align: right; }
+
+  /* ══════════════════════════════════════════
+     LOADING OVERLAY
+  ══════════════════════════════════════════ */
+  #loading-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(10,12,15,.92);
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 14px;
+  }
+  #loading-overlay.hidden { display: none; }
+
+  .loading-text {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--accent);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+  .loading-bar {
+    width: 180px;
+    height: 2px;
+    background: var(--border);
+    border-radius: 1px;
+    overflow: hidden;
+  }
+  .loading-bar-inner {
+    height: 100%;
+    background: var(--accent);
+    width: 0%;
+    transition: width .3s;
+    border-radius: 1px;
+  }
+
+  .mapboxgl-ctrl-bottom-left,
+  .mapboxgl-ctrl-bottom-right { display: none; }
+</style>
+</head>
+<body>
+
+<!-- ─── TOP BAR ─── -->
+<div id="top-bar">
+
+  <div id="top-title">
+    <h1>Capital Bikeshare</h1>
+    <p>Trip Explorer · 2020–2025 · 24.7M rides</p>
+  </div>
+
+  <!-- scrollable filter zone -->
+  <div id="filter-scroll-wrap">
+    <div id="filter-scroll">
+
+      <div class="vdiv"></div>
+
+      <!-- Date range -->
+      <div class="bar-seg">
+        <span class="bar-lbl">From</span>
+        <select id="f-month-start"></select>
+        <span class="bar-lbl">To</span>
+        <select id="f-month-end"></select>
+      </div>
+
+      <div class="vdiv"></div>
+
+      <!-- Bike type -->
+      <div class="bar-seg">
+        <span class="bar-lbl">Bike</span>
+        <div class="chips" id="f-bike">
+          <div class="chip active" data-val="electric_bike">Electric</div>
+          <div class="chip active" data-val="classic_bike">Classic</div>
+          <div class="chip active" data-val="docked_bike">Docked</div>
+        </div>
+      </div>
+
+      <div class="vdiv"></div>
+
+      <!-- User type -->
+      <div class="bar-seg">
+        <span class="bar-lbl">User</span>
+        <div class="chips" id="f-user">
+          <div class="chip active" data-val="Member">Member</div>
+          <div class="chip active" data-val="Casual">Casual</div>
+        </div>
+      </div>
+
+      <div class="vdiv"></div>
+
+      <!-- Ride type -->
+      <div class="bar-seg">
+        <span class="bar-lbl">Type</span>
+        <div class="chips" id="f-type">
+          <div class="chip active" data-val="station-to-station">S→S</div>
+          <div class="chip active" data-val="station-to-point">S→P</div>
+          <div class="chip active" data-val="point-to-station">P→S</div>
+          <div class="chip active" data-val="point-to-point">P→P</div>
+        </div>
+      </div>
+
+      <!-- trailing gap -->
+      <div style="width:28px;flex-shrink:0;"></div>
+
+    </div><!-- /filter-scroll -->
+  </div><!-- /filter-scroll-wrap -->
+
+  <!-- Status + Load — always pinned right -->
+  <div id="bar-right">
+    <div id="status">Ready — select a date range and load.</div>
+    <button id="load-btn" disabled="">Load Trips</button>
+  </div>
+
+</div><!-- /top-bar -->
+
+<!-- ─── MAIN AREA ─── -->
+<div id="main-area">
+
+  <!-- LEFT: leaderboard -->
+  <div id="left-panel">
+    <div id="lb-header">
+      <span>Notable</span>
+      <select id="sort-select">
+        <option value="distance">Longest dist.</option>
+        <option value="duration">Longest ride</option>
+        <option value="ratio_high">Slowest vs route</option>
+        <option value="ratio_low">Fastest vs route</option>
+      </select>
+    </div>
+    <div id="trip-list">
+      <div class="empty-msg">Load trips to populate<br>the leaderboard.</div>
+    </div>
+  </div>
+
+  <!-- MAP -->
+  <div id="map"></div>
+
+  <!-- RIGHT: stats + sparkline + layers + legend -->
+  <div id="right-panel">
+
+    <div class="rp-lbl">Statistics</div>
+    <div id="stats-grid">
+      <div class="stat">
+        <div class="stat-val" id="stat-trips">—</div>
+        <div class="stat-lbl">Trips</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-km">—</div>
+        <div class="stat-lbl">Total km</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-median">—</div>
+        <div class="stat-lbl">Median dist</div>
+      </div>
+      <div class="stat">
+        <div class="stat-val" id="stat-ratio">—</div>
+        <div class="stat-lbl">Med. ratio</div>
+      </div>
+    </div>
+
+    <div id="spark-wrap">
+      <canvas id="spark-canvas" height="44"></canvas>
+      <div class="spark-foot">
+        <span id="spark-start">—</span>
+        <span class="spark-title">Daily trips</span>
+        <span id="spark-end">—</span>
+      </div>
+    </div>
+
+    <div class="rp-lbl">Map Layers</div>
+    <div id="layer-section">
+      <button class="layer-btn active" id="btn-routes">
+        <span class="ldot"></span>Routes
+      </button>
+      <button class="layer-btn" id="btn-heat">
+        <span class="ldot"></span>Heatmap
+      </button>
+      <button class="layer-btn" id="btn-stations">
+        <span class="ldot"></span>Origins
+      </button>
+    </div>
+
+    <div class="rp-lbl">Route Colors</div>
+    <div id="legend">
+      <div class="leg-item">
+        <div class="leg-line" style="background:#47c8ff;"></div>
+        Electric bike
+      </div>
+      <div class="leg-item">
+        <div class="leg-line" style="background:#a0ff47;"></div>
+        Classic bike
+      </div>
+      <div class="leg-item">
+        <div class="leg-line" style="background:#ff8c47;"></div>
+        Docked bike
+      </div>
+    </div>
+
+  </div><!-- /right-panel -->
+
+</div><!-- /main-area -->
+
+<!-- TRIP DETAIL PANEL (floats over map) -->
+<div id="detail-panel">
+  <div id="detail-close">✕</div>
+  <div class="detail-title" id="detail-title">Trip Detail</div>
+  <div id="detail-body"></div>
+</div>
+
+<!-- LOADING OVERLAY -->
+<div id="loading-overlay">
+  <div class="loading-text" id="loading-msg">Initializing DuckDB…</div>
+  <div class="loading-bar"><div class="loading-bar-inner" id="loading-bar"></div></div>
+</div>
+
+<script type="module">
+// ── CONFIG ───────────────────────────────────────────────────────────────────
+const MAPBOX_TOKEN = 'MAPBOX_TOKEN_PLACEHOLDER';
+const S3_BASE   = 'https://bryvado-cbs-pipeline-data-2026.s3.us-east-1.amazonaws.com/data/processed/dashboard';
+const GEOM_BASE = 'https://bryvado-cbs-pipeline-data-2026.s3.us-east-1.amazonaws.com/data/processed';
+
+// ── MONTH LIST (2020-05 → 2025-11) ───────────────────────────────────────────
+const MONTHS = [];
+(function() {
+  let y = 2020, m = 5;
+  while (y < 2025 || (y === 2025 && m <= 11)) {
+    MONTHS.push(`${y}-${String(m).padStart(2,'0')}`);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+})();
+
+// ── MONTH SELECTS ─────────────────────────────────────────────────────────────
+const startSel = document.getElementById('f-month-start');
+const endSel   = document.getElementById('f-month-end');
+MONTHS.forEach(m => {
+  startSel.insertAdjacentHTML('beforeend', `<option value="${m}">${m}</option>`);
+  endSel.insertAdjacentHTML('beforeend',   `<option value="${m}">${m}</option>`);
+});
+startSel.value = '2024-01';
+endSel.value   = '2024-03';
+
+// ── CHIP TOGGLES ──────────────────────────────────────────────────────────────
+document.querySelectorAll('.chip').forEach(c => {
+  c.addEventListener('click', () => c.classList.toggle('active'));
+});
+
+// ── MAPBOX ────────────────────────────────────────────────────────────────────
+mapboxgl.accessToken = MAPBOX_TOKEN;
+const map = new mapboxgl.Map({
+  container: 'map',
+  style: 'mapbox://styles/mapbox/dark-v11',
+  center: [-77.04, 38.91],
+  zoom: 11.5,
+  attributionControl: false
+});
+
+// ── DUCKDB ────────────────────────────────────────────────────────────────────
+let db, conn, currentTrips = [];
+
+async function initDuckDB() {
+  setStatus('Loading DuckDB-WASM…');
+  setBar(10);
+  const duckdb = await import('https://cdn.jsdelivr.net/npm/@duckdb/duckdb-wasm@latest/+esm');
+  setBar(40);
+  const bundle = await duckdb.selectBundle(duckdb.getJsDelivrBundles());
+  const workerUrl = URL.createObjectURL(
+    new Blob([`importScripts("${bundle.mainWorker}");`], { type: 'text/javascript' })
+  );
+  const worker = new Worker(workerUrl);
+  db = new duckdb.AsyncDuckDB(new duckdb.ConsoleLogger(), worker);
+  await db.instantiate(bundle.mainModule, bundle.pthreadWorker);
+  URL.revokeObjectURL(workerUrl);
+  conn = await db.connect();
+  try { await conn.query(`LOAD httpfs;`); } catch(_) {}
+  setBar(100);
+  setStatus('Ready — select a date range and load.');
+  document.getElementById('loading-overlay').classList.add('hidden');
+  document.getElementById('load-btn').disabled = false;
+}
+
+function setStatus(msg, err = false) {
+  const el = document.getElementById('status');
+  el.textContent = msg;
+  el.classList.toggle('err', err);
+}
+function setBar(pct) { document.getElementById('loading-bar').style.width = pct + '%'; }
+
+// ── LOAD & QUERY ──────────────────────────────────────────────────────────────
+document.getElementById('load-btn').addEventListener('click', loadTrips);
+
+async function loadTrips() {
+  const startM = startSel.value;
+  const endM   = endSel.value;
+  if (startM > endM) { setStatus('Start must be before end.', true); return; }
+
+  const bikeTypes = [...document.querySelectorAll('#f-bike .chip.active')].map(c => c.dataset.val);
+  const userTypes = [...document.querySelectorAll('#f-user .chip.active')].map(c => c.dataset.val);
+  const rideTypes = [...document.querySelectorAll('#f-type .chip.active')].map(c => c.dataset.val);
+
+  if (!bikeTypes.length || !userTypes.length || !rideTypes.length) {
+    setStatus('Select at least one option in each filter.', true);
+    return;
+  }
+
+  const selMonths = MONTHS.filter(m => m >= startM && m <= endM);
+  if (!selMonths.length) { setStatus('No months in range.', true); return; }
+
+  document.getElementById('load-btn').disabled = true;
+  setStatus(`Loading ${selMonths.length} month(s)…`);
+
+  // Build URL list using pipeline parquet path pattern
+  const urlList = selMonths.map(m => `'${S3_BASE}/trips_${m}.parquet'`).join(', ');
+
+  const bikeList = bikeTypes.map(b => `'${b}'`).join(',');
+  const userList = userTypes.map(u => `'${u}'`).join(',');
+  const rideList = rideTypes.map(r => `'${r}'`).join(',');
+
+  try {
+    setStatus('Querying…');
+    const query = `
+      SELECT
+        ride_id,
+        rideable_type,
+        strftime('%Y-%m-%d %H:%M', started_at::TIMESTAMP) AS started_fmt,
+        started_at::DATE::VARCHAR AS trip_date,
+        CAST(duration_secs AS INTEGER) AS duration_secs,
+        start_station_id,
+        end_station_id,
+        start_lat, start_lng, end_lat, end_lng,
+        user_type, ride_type,
+        ROUND(osrm_distance_m) AS distance_m,
+        ROUND(osrm_duration_s) AS osrm_dur,
+        ROUND(duration_ratio, 2) AS ratio,
+        geometry
+      FROM read_parquet([${urlList}])
+      WHERE rideable_type IN (${bikeList})
+        AND user_type IN (${userList})
+        AND ride_type IN (${rideList})
+        AND duration_secs > 60
+        AND osrm_distance_m > 200
+        AND geometry IS NOT NULL
+    `;
+
+    const result = await conn.query(query);
+    const fields = result.schema.fields.map(f => f.name);
+    const rows = result.toArray().map(row => {
+      const obj = {};
+      fields.forEach(f => { const v = row[f]; obj[f] = typeof v === 'bigint' ? Number(v) : v; });
+      return obj;
+    });
+
+    currentTrips = rows;
+    updateStats(rows);
+    drawSparkline(rows);
+    renderLeaderboard(rows);
+    renderMapLayers(rows);
+    setStatus(`${rows.length.toLocaleString()} trips loaded.`);
+  } catch(e) {
+    console.error(e);
+    setStatus('Error: ' + e.message, true);
+  }
+  document.getElementById('load-btn').disabled = false;
+}
+
+// ── STATS ─────────────────────────────────────────────────────────────────────
+function updateStats(trips) {
+  const n = trips.length;
+  const dists = trips.map(t => t.distance_m || 0).sort((a,b) => a-b);
+  const medDist = dists[Math.floor(n/2)] || 0;
+  const ratios = trips.map(t => t.ratio || 0).filter(r => r > 0.1 && r < 50).sort((a,b) => a-b);
+  const medRatio = ratios[Math.floor(ratios.length/2)] || 0;
+  const members = trips.filter(t => t.user_type === 'Member').length;
+
+  document.getElementById('stat-trips').textContent  = n >= 1000 ? (n/1000).toFixed(1)+'K' : n;
+  document.getElementById('stat-km').textContent     = Math.round(medDist)+'m';
+  document.getElementById('stat-median').textContent = medRatio.toFixed(2)+'×';
+  document.getElementById('stat-ratio').textContent  = Math.round(members/n*100)+'%';
+
+  document.querySelectorAll('.stat-lbl')[1].textContent = 'Med. distance';
+  document.querySelectorAll('.stat-lbl')[2].textContent = 'Med. ratio';
+  document.querySelectorAll('.stat-lbl')[3].textContent = 'Members';
+}
+
+// ── SPARKLINE ─────────────────────────────────────────────────────────────────
+function drawSparkline(trips) {
+  const canvas = document.getElementById('spark-canvas');
+  const wrap   = document.getElementById('spark-wrap');
+  const dpr    = window.devicePixelRatio || 1;
+  const W      = wrap.clientWidth - 24;
+  const H      = 44;
+  canvas.width  = W * dpr;
+  canvas.height = H * dpr;
+  canvas.style.width  = W + 'px';
+  canvas.style.height = H + 'px';
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  const byDate = {};
+  trips.forEach(t => { if (t.trip_date) byDate[t.trip_date] = (byDate[t.trip_date] || 0) + 1; });
+  const dates = Object.keys(byDate).sort();
+  if (dates.length < 2) return;
+
+  const vals = dates.map(d => byDate[d]);
+  const max  = Math.max(...vals);
+  const pad  = 2;
+  const xOf  = i => (i / (dates.length - 1)) * (W - pad*2) + pad;
+  const yOf  = v => H - pad - (v / max) * (H - pad*2 - 2);
+
+  ctx.beginPath();
+  ctx.moveTo(xOf(0), H);
+  dates.forEach((_, i) => ctx.lineTo(xOf(i), yOf(vals[i])));
+  ctx.lineTo(xOf(dates.length - 1), H);
+  ctx.closePath();
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, 'rgba(232,255,71,.14)');
+  grad.addColorStop(1, 'rgba(232,255,71,.01)');
+  ctx.fillStyle = grad;
+  ctx.fill();
+
+  ctx.beginPath();
+  dates.forEach((_, i) => i === 0 ? ctx.moveTo(xOf(i), yOf(vals[i])) : ctx.lineTo(xOf(i), yOf(vals[i])));
+  ctx.strokeStyle = '#e8ff47';
+  ctx.lineWidth   = 1.5;
+  ctx.lineJoin    = 'round';
+  ctx.stroke();
+
+  document.getElementById('spark-start').textContent = dates[0].slice(5);
+  document.getElementById('spark-end').textContent   = dates[dates.length-1].slice(5);
+}
+
+// ── LEADERBOARD ───────────────────────────────────────────────────────────────
+const sortSel = document.getElementById('sort-select');
+sortSel.innerHTML = `
+  <option value="distance">Longest distance</option>
+  <option value="duration">Longest ride</option>
+  <option value="ratio_high">Slowest vs route</option>
+  <option value="ratio_low">Fastest vs route</option>
+`;
+sortSel.addEventListener('change', () => renderLeaderboard(currentTrips));
+
+function renderLeaderboard(trips) {
+  const sort   = sortSel.value;
+  const valid  = trips.filter(t => t.distance_m > 200 && t.duration_secs > 120 && t.ratio > 0.1 && t.ratio < 50);
+  const sorted = [...valid];
+
+  if (sort === 'distance')        sorted.sort((a,b) => b.distance_m - a.distance_m);
+  else if (sort === 'duration')   sorted.sort((a,b) => b.duration_secs - a.duration_secs);
+  else if (sort === 'ratio_high') sorted.sort((a,b) => b.ratio - a.ratio);
+  else                            sorted.sort((a,b) => a.ratio - b.ratio);
+
+  const top  = sorted.slice(0, 50);
+  const list = document.getElementById('trip-list');
+  list.innerHTML = '';
+
+  if (!top.length) {
+    list.innerHTML = '<div class="empty-msg">No trips match<br>current filters.</div>';
+    return;
+  }
+
+  top.forEach(t => {
+    const card = document.createElement('div');
+    card.className = 'trip-card';
+    let metric;
+    if (sort === 'distance')        metric = (t.distance_m/1000).toFixed(2)+' km';
+    else if (sort === 'duration')   metric = fmtDur(t.duration_secs);
+    else                            metric = t.ratio+'×';
+    const bikeShort = t.rideable_type?.replace('_bike','').replace('_',' ') || '?';
+    card.innerHTML = `
+      <div class="tc-top">
+        <span class="tc-type">${bikeShort} · ${t.user_type}</span>
+        <span class="tc-metric">${metric}</span>
+      </div>
+      <div class="tc-meta">
+        <strong>${t.started_fmt}</strong><br>
+        ${(t.distance_m/1000).toFixed(2)} km · ${fmtDur(t.duration_secs)}
+      </div>
+    `;
+    card.addEventListener('click', () => selectTrip(t, card));
+    list.appendChild(card);
+  });
+}
+
+function fmtDur(secs) {
+  if (!secs) return '—';
+  const h = Math.floor(secs / 3600);
+  const m = Math.floor((secs % 3600) / 60);
+  const s = secs % 60;
+  if (h > 0) return `${h}h ${m}m`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+}
+
+// ── SELECT TRIP ───────────────────────────────────────────────────────────────
+function selectTrip(trip, card) {
+  document.querySelectorAll('.trip-card').forEach(c => c.classList.remove('active'));
+  card.classList.add('active');
+
+  // Draw actual OSRM geometry immediately if available
+  if (trip.geometry) {
+    try {
+      const geom = JSON.parse(trip.geometry);
+      const geojson = { type: 'Feature', geometry: geom, properties: {} };
+      if (map.getSource('selected-route')) {
+        map.getSource('selected-route').setData(geojson);
+      } else {
+        map.addSource('selected-route', { type: 'geojson', data: geojson });
+        map.addLayer({ id: 'selected-route', type: 'line', source: 'selected-route',
+          paint: { 'line-color': '#e8ff47', 'line-width': 3, 'line-opacity': 1 }
+        });
+      }
+      const coords = geom.coordinates;
+      if (coords?.length > 0) {
+        const lngs = coords.map(c => c[0]);
+        const lats = coords.map(c => c[1]);
+        map.fitBounds(
+          [[Math.min(...lngs)-.01, Math.min(...lats)-.01],[Math.max(...lngs)+.01, Math.max(...lats)+.01]],
+          { padding: 80, duration: 800 }
+        );
+      }
+    } catch(e) { console.warn('geometry parse error', e); }
+  } else {
+    drawStraightLine(trip);
+  }
+
+  document.getElementById('detail-title').textContent = trip.ride_type?.replace(/-/g,' ') || 'Trip';
+  document.getElementById('detail-body').innerHTML = `
+    <div class="detail-row"><span>Date</span><span>${trip.started_fmt}</span></div>
+    <div class="detail-row"><span>Bike</span><span>${trip.rideable_type?.replace(/_/g,' ')}</span></div>
+    <div class="detail-row"><span>User</span><span>${trip.user_type}</span></div>
+    <div class="detail-row"><span>Distance</span><span>${(trip.distance_m/1000).toFixed(2)} km</span></div>
+    <div class="detail-row"><span>Actual time</span><span>${fmtDur(trip.duration_secs)}</span></div>
+    <div class="detail-row"><span>OSRM time</span><span>${fmtDur(trip.osrm_dur)}</span></div>
+    <div class="detail-row"><span>Ratio</span><span>${trip.ratio}×</span></div>
+    <div class="detail-row"><span>ID</span><span style="font-size:9px">${trip.ride_id}</span></div>
+  `;
+  document.getElementById('detail-panel').classList.add('visible');
+}
+
+function drawStraightLine(trip) {
+  const geojson = {
+    type: 'Feature',
+    geometry: { type: 'LineString', coordinates: [[trip.start_lng, trip.start_lat],[trip.end_lng, trip.end_lat]] },
+    properties: {}
+  };
+  if (map.getSource('selected-route')) {
+    map.getSource('selected-route').setData(geojson);
+  } else {
+    map.addSource('selected-route', { type: 'geojson', data: geojson });
+    map.addLayer({ id: 'selected-route', type: 'line', source: 'selected-route',
+      paint: { 'line-color': '#e8ff47', 'line-width': 2, 'line-opacity': 0.8, 'line-dasharray': [4, 2] }
+    });
+  }
+}
+
+// ── ON-DEMAND OSRM ROUTE FETCH ────────────────────────────────────────────────
+async function loadRoute(trip) {
+  const btn = document.getElementById('route-btn');
+  if (btn) btn.textContent = 'Loading…';
+
+  try {
+    let geomStr = null;
+
+    if (trip.ride_type === 'station-to-station') {
+      const parts = Array.from({length: 10}, (_,i) =>
+        `'${GEOM_BASE}/s2s_geometry/part_${String(i).padStart(4,'0')}.parquet'`
+      ).join(', ');
+      const r = await conn.query(`
+        SELECT geometry FROM read_parquet([${parts}])
+        WHERE start_station_id = '${trip.start_station_id}'
+          AND end_station_id   = '${trip.end_station_id}'
+        LIMIT 1
+      `);
+      const rows = r.toArray();
+      if (rows.length > 0) geomStr = rows[0].geometry;
+    } else {
+      const slat = Number(trip.start_lat).toFixed(4);
+      const slng = Number(trip.start_lng).toFixed(4);
+      const elat = Number(trip.end_lat).toFixed(4);
+      const elng = Number(trip.end_lng).toFixed(4);
+      const parts = Array.from({length: 17}, (_,i) =>
+        `'${GEOM_BASE}/nonstation_geometry/part_${String(i).padStart(4,'0')}.parquet'`
+      ).join(', ');
+      const r = await conn.query(`
+        SELECT geometry FROM read_parquet([${parts}])
+        WHERE start_lat_r = ${slat} AND start_lng_r = ${slng}
+          AND end_lat_r   = ${elat} AND end_lng_r   = ${elng}
+        LIMIT 1
+      `);
+      const rows = r.toArray();
+      if (rows.length > 0) geomStr = rows[0].geometry;
+    }
+
+    if (geomStr) {
+      const geom = JSON.parse(geomStr);
+      map.getSource('selected-route').setData({ type: 'Feature', geometry: geom, properties: {} });
+      // Remove dashes once we have the real route
+      map.setPaintProperty('selected-route', 'line-dasharray', null);
+      map.setPaintProperty('selected-route', 'line-width', 3);
+      map.setPaintProperty('selected-route', 'line-opacity', 1);
+      if (btn) btn.textContent = '✓ Loaded';
+    } else {
+      if (btn) btn.textContent = 'Not found';
+    }
+  } catch(e) {
+    console.warn('route fetch failed', e);
+    if (btn) btn.textContent = 'Error';
+  }
+}
+
+document.getElementById('detail-close').addEventListener('click', () => {
+  document.getElementById('detail-panel').classList.remove('visible');
+  document.querySelectorAll('.trip-card').forEach(c => c.classList.remove('active'));
+});
+
+// ── MAP LAYERS ────────────────────────────────────────────────────────────────
+let routesVisible = true, heatVisible = false, stationsVisible = false;
+
+function renderMapLayers(trips) {
+  const sample = trips.length > 5000
+    ? [...trips].sort(() => Math.random()-.5).slice(0, 5000)
+    : trips;
+
+  const features = sample
+    .filter(t => t.geometry)
+    .map(t => {
+      try {
+        return { type: 'Feature', geometry: JSON.parse(t.geometry),
+                 properties: { bike: t.rideable_type, distance: t.distance_m } };
+      } catch { return null; }
+    })
+    .filter(Boolean);
+
+  const geojson = { type: 'FeatureCollection', features };
+
+  if (map.getSource('routes')) {
+    map.getSource('routes').setData(geojson);
+  } else {
+    map.addSource('routes', { type: 'geojson', data: geojson });
+    map.addLayer({
+      id: 'routes-layer', type: 'line', source: 'routes',
+      paint: {
+        'line-color': ['match', ['get', 'bike'], 'electric_bike', '#47c8ff', 'classic_bike', '#a0ff47', '#ff8c47'],
+        'line-width': 1, 'line-opacity': 0.18
+      }
+    });
+    map.addLayer({
+      id: 'heat-layer', type: 'heatmap', source: 'routes',
+      layout: { visibility: 'none' },
+      paint: {
+        'heatmap-weight': ['interpolate', ['linear'], ['get', 'distance'], 0, 0, 5000, 1],
+        'heatmap-intensity': 0.6,
+        'heatmap-color': ['interpolate', ['linear'], ['heatmap-density'],
+          0, 'rgba(0,0,0,0)', 0.2, '#47c8ff', 0.6, '#e8ff47', 1, '#ff4757'],
+        'heatmap-radius': 15, 'heatmap-opacity': 0.7
+      }
+    });
+  }
+
+  const pointFeatures = sample.map(t => ({
+    type: 'Feature',
+    geometry: { type: 'Point', coordinates: [t.start_lng, t.start_lat] },
+    properties: {}
+  }));
+  if (map.getSource('origins')) {
+    map.getSource('origins').setData({ type: 'FeatureCollection', features: pointFeatures });
+  } else {
+    map.addSource('origins', { type: 'geojson', data: { type: 'FeatureCollection', features: pointFeatures } });
+    map.addLayer({
+      id: 'stations-layer', type: 'circle', source: 'origins',
+      layout: { visibility: 'none' },
+      paint: { 'circle-radius': 3, 'circle-color': '#e8ff47', 'circle-opacity': 0.5 }
+    });
+  }
+}
+
+// ── LAYER TOGGLES ─────────────────────────────────────────────────────────────
+document.getElementById('btn-routes').addEventListener('click', function() {
+  routesVisible = !routesVisible;
+  this.classList.toggle('active', routesVisible);
+  if (map.getLayer('routes-layer'))
+    map.setLayoutProperty('routes-layer', 'visibility', routesVisible ? 'visible' : 'none');
+});
+document.getElementById('btn-heat').addEventListener('click', function() {
+  heatVisible = !heatVisible;
+  this.classList.toggle('active', heatVisible);
+  if (map.getLayer('heat-layer'))
+    map.setLayoutProperty('heat-layer', 'visibility', heatVisible ? 'visible' : 'none');
+});
+document.getElementById('btn-stations').addEventListener('click', function() {
+  stationsVisible = !stationsVisible;
+  this.classList.toggle('active', stationsVisible);
+  if (map.getLayer('stations-layer'))
+    map.setLayoutProperty('stations-layer', 'visibility', stationsVisible ? 'visible' : 'none');
+});
+
+// ── INIT ──────────────────────────────────────────────────────────────────────
+map.on('load', async () => { await initDuckDB(); });
+</script>
+</body>
+</html>
