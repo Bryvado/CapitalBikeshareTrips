@@ -630,8 +630,10 @@ async function loadTrips() {
     renderMapLayers(rows);
     setStatus(`Loaded ${rows.length.toLocaleString()} trips.`);
   } catch(e) {
-    console.error(e);
-    setStatus('Error loading data. Check console.');
+    console.error('FULL ERROR:', e);
+    console.error('MESSAGE:', e.message);
+    setStatus('Error: ' + e.message);
+    alert('Error: ' + e.message);
   }
 
   document.getElementById('load-btn').disabled = false;
